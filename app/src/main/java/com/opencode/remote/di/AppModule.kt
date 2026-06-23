@@ -1,0 +1,81 @@
+package com.opencode.remote.di
+
+import com.opencode.remote.data.api.AuthInterceptor
+import com.opencode.remote.data.api.OpenCodeApi
+import com.opencode.remote.data.local.SettingsDataStore
+import com.opencode.remote.data.repository.OpenCodeRepository
+import com.opencode.remote.data.repository.OpenCodeRepositoryImpl
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import java.util.concurrent.TimeUnit
+import javax.inject.Singleton
+
+@Module
+@InstallIn(SingletonComponent::class)
+object AppModule {
+
+    @Provides
+    @Singleton
+    fun provideSettingsDataStore(
+        context: android.content.Context
+    ): SettingsDataStore {
+        return SettingsDataStore(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideOkHttpClient(
+        authInterceptor: AuthInterceptor
+    ): OkHttpClient {
+        val logging = HttpLoggingInterceptor().apply {
+            level = HttpLoggingInterceptor.Level.BODY
+        }
+        return OkHttpClient.Builder()
+            .addInterceptor(authInterceptor)
+            .addInterceptor(logging)
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideRetrofit(
+        okHttpClient: OkHttpClient,
+        settingsDataStore: SettingsDataStore
+    ): Retrofit {
+        val config = runBlocking {
+            settingsDataStore.getConfig().first()
+        }
+        val baseUrl = "http://${config.host}:${config.port}/"
+        return Retrofit.Builder()
+            .baseUrl(baseUrl)
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideOpenCodeApi(retrofit: Retrofit): OpenCodeApi {
+        return retrofit.create(OpenCodeApi::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideOpenCodeRepository(
+        api: OpenCodeApi,
+        settingsDataStore: SettingsDataStore
+    ): OpenCodeRepository {
+        return OpenCodeRepositoryImpl(api, settingsDataStore)
+    }
+}
