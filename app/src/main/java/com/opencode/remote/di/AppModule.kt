@@ -8,6 +8,7 @@ import com.opencode.remote.data.repository.OpenCodeRepositoryImpl
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -25,7 +26,7 @@ object AppModule {
     @Provides
     @Singleton
     fun provideSettingsDataStore(
-        context: android.content.Context
+        @ApplicationContext context: android.content.Context
     ): SettingsDataStore {
         return SettingsDataStore(context)
     }
