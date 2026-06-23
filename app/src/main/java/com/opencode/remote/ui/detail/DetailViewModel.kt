@@ -67,7 +67,7 @@ class DetailViewModel @Inject constructor(
                 }
 
             // Load messages
-            repository.getMessages(currentSessionId)
+            repository.getMessages(currentSessionId, 100)
                 .catch { e -> _uiState.value = _uiState.value.copy(error = e.message) }
                 .collect { result ->
                     result.onSuccess { messages ->
@@ -137,7 +137,7 @@ class DetailViewModel @Inject constructor(
 
     fun refreshMessages() {
         viewModelScope.launch {
-            repository.getMessages(currentSessionId)
+            repository.getMessages(currentSessionId, 100)
                 .catch { e -> _uiState.value = _uiState.value.copy(error = e.message) }
                 .collect { result ->
                     result.onSuccess { messages ->

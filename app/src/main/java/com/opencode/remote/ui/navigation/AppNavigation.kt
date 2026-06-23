@@ -5,7 +5,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.HelpCircle
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -33,7 +33,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
         fun createRoute(sessionId: String) = "detail/$sessionId"
     }
     data object Settings : Screen("settings", "Settings", Icons.Default.Settings)
-    data object Help : Screen("help", "Help", Icons.Default.HelpCircle)
+    data object Help : Screen("help", "Help", Icons.Default.Info)
 }
 
 val bottomNavItems = listOf(
