@@ -1,9 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools">
-    <style name="Theme.OpenCodeRemote" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/purple_500</item>
-        <item name="colorSecondary">@color/teal_200</item>
-        <item name="colorTertiary">@color/pink_500</item>
-        <item name="colorError">@color/error_500</item>
-    </style>
+<resources>
+    <style name="Theme.OpenCodeRemote" parent="android:Theme.Material.Light.NoActionBar" />
 </resources>
