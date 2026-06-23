@@ -1,4 +1,37 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">OpenCode Remote</string>
+    <string name="app_name">OpenCodeRemote</string>
+    <string name="connect">Connect</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="host_hint">Enter Host/IP</string>
+    <string name="port_hint">Port</string>
+    <string name="sessions">Sessions</string>
+    <string name="new_session">New Session</string>
+    <string name="no_sessions">No sessions found</string>
+    <string name="select_model">Select Model</string>
+    <string name="settings">Settings</string>
+    <string name="dark_mode">Dark Mode</string>
+    <string name="light_mode">Light Mode</string>
+    <string name="system_mode">System Default</string>
+    <string name="font_size">Font Size</string>
+    <string name="force_rtl">Force RTL</string>
+    <string name="clear_cache">Clear Cache</string>
+    <string name="type_message">Type a message...</string>
+    <string name="connected">Connected</string>
+    <string name="disconnected">Disconnected</string>
+    <string name="error_connection">Connection failed</string>
+    <string name="error_invalid_host">Invalid host</string>
+    <string name="error_invalid_port">Invalid port</string>
+    <string name="refresh">Refresh</string>
+    <string name="send">Send</string>
+    <string name="switch_model">Switch Model</string>
+    <string name="create_session">Create Session</string>
+    <string name="delete_session">Delete Session</string>
+    <string name="search_models">Search models...</string>
+    <string name="current_model">Current Model</string>
+    <string name="theme">Theme</string>
+    <string name="appearance">Appearance</string>
+    <string name="language">Language</string>
+    <string name="about">About</string>
+    <string name="version">Version</string>
+    <string name="opencode_remote_desc">A remote client for OpenCode Server running in Termux</string>
 </resources>

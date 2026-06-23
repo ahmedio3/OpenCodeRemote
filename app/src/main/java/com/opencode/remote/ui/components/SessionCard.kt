@@ -28,13 +28,7 @@ fun SessionCard(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
-        border = CardDefaults.outlinedCardBorder().let { border ->
-            if (session.status == "busy") {
-                border.copy(width = 1.5.dp)
-            } else {
-                border
-            }
-        },
+        border = CardDefaults.outlinedCardBorder(),
         elevation = CardDefaults.cardElevation(
             defaultElevation = 1.dp
         )
