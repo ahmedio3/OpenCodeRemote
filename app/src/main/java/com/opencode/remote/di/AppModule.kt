@@ -1,6 +1,7 @@
 package com.opencode.remote.di
 
 import com.opencode.remote.data.api.AuthInterceptor
+import com.opencode.remote.data.api.DynamicBaseUrlInterceptor
 import com.opencode.remote.data.api.OpenCodeApi
 import com.opencode.remote.data.local.SettingsDataStore
 import com.opencode.remote.data.repository.OpenCodeRepository
@@ -10,8 +11,6 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -34,12 +33,14 @@ object AppModule {
     @Provides
     @Singleton
     fun provideOkHttpClient(
-        authInterceptor: AuthInterceptor
+        authInterceptor: AuthInterceptor,
+        dynamicBaseUrlInterceptor: DynamicBaseUrlInterceptor
     ): OkHttpClient {
         val logging = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
         }
         return OkHttpClient.Builder()
+            .addInterceptor(dynamicBaseUrlInterceptor)
             .addInterceptor(authInterceptor)
             .addInterceptor(logging)
             .connectTimeout(10, TimeUnit.SECONDS)
@@ -51,15 +52,10 @@ object AppModule {
     @Provides
     @Singleton
     fun provideRetrofit(
-        okHttpClient: OkHttpClient,
-        settingsDataStore: SettingsDataStore
+        okHttpClient: OkHttpClient
     ): Retrofit {
-        val config = runBlocking {
-            settingsDataStore.getConfig().first()
-        }
-        val baseUrl = "http://${config.host}:${config.port}/"
         return Retrofit.Builder()
-            .baseUrl(baseUrl)
+            .baseUrl("http://0.0.0.0/")
             .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()

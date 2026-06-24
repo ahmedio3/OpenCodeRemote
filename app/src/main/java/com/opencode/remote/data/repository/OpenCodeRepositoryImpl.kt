@@ -258,7 +258,8 @@ class OpenCodeRepositoryImpl @Inject constructor(
     }
 
     override fun setServerConfig(config: ServerConfig) {
-        // This is handled by the repository/hilt rebuilding the API instance
+        // Config is saved to DataStore by the ViewModel.
+        // DynamicBaseUrlInterceptor reads the latest config from DataStore on each request.
     }
 
     override fun getServerConfig(): Flow<ServerConfig> {
