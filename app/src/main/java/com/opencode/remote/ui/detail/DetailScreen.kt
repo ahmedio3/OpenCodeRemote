@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
@@ -217,6 +218,7 @@ fun DetailScreen(
             }
 
             // Quick scroll-to-bottom FAB
+            val coroutineScope = rememberCoroutineScope()
             AnimatedVisibility(
                 visible = !isAtBottom && uiState.messages.isNotEmpty(),
                 modifier = Modifier
@@ -225,7 +227,9 @@ fun DetailScreen(
             ) {
                 FloatingActionButton(
                     onClick = {
-                        listState.animateScrollToItem(uiState.messages.size - 1)
+                        coroutineScope.launch {
+                            listState.animateScrollToItem(uiState.messages.size - 1)
+                        }
                         isAtBottom = true
                     },
                     modifier = Modifier.size(36.dp),
@@ -659,6 +663,7 @@ private fun InfoCard(
 
 // ── Model Selection Sheet ──
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ModelSelectionSheet(
     modelOptions: List<ModelOption>,
@@ -836,6 +841,7 @@ private fun ModelSelectionSheet(
 
 // ── Agent Selection Sheet ──
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AgentSelectionSheet(
     agents: List<AgentOption>,
