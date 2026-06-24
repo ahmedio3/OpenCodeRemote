@@ -70,9 +70,8 @@ object AppModule {
     @Provides
     @Singleton
     fun provideOpenCodeRepository(
-        api: OpenCodeApi,
-        settingsDataStore: SettingsDataStore
+        api: OpenCodeApi
     ): OpenCodeRepository {
-        return OpenCodeRepositoryImpl(api, settingsDataStore)
+        return OpenCodeRepositoryImpl(api)
     }
 }

@@ -36,7 +36,4 @@ data class SendCommandRequest(
     val agent: String? = null
 )
 
-data class CommandResponse(
-    val info: MessageInfo,
-    val parts: List<MessagePart>
-)
+// CommandResponse is now MessageEnvelope (same structure)

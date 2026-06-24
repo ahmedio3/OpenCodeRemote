@@ -15,11 +15,12 @@ interface OpenCodeRepository {
     fun deleteSession(id: String): Flow<Result<Unit>>
     fun getMessages(id: String, limit: Int): Flow<Result<List<MessageEnvelope>>>
     fun sendPrompt(id: String, text: String, model: ModelSelection?, agent: String?): Flow<Result<Unit>>
-    fun sendCommand(id: String, command: String, args: String?, model: ModelSelection?, agent: String?): Flow<Result<CommandResponse>>
+    fun sendCommand(id: String, command: String, args: String?, model: ModelSelection?, agent: String?): Flow<Result<MessageEnvelope>>
     fun abortSession(id: String): Flow<Result<Unit>>
     fun getTodos(id: String): Flow<Result<List<TodoItem>>>
     fun getDiffs(id: String): Flow<Result<List<DiffFile>>>
     fun getCommands(): Flow<Result<List<CommandInfo>>>
+    fun getModelOptions(): Flow<Result<List<ModelOption>>>
     fun getAgents(): Flow<Result<List<AgentOption>>>
     fun getProviders(): Flow<Result<ProvidersResponse>>
     fun getPath(): Flow<Result<PathInfo>>

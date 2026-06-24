@@ -97,6 +97,8 @@ data class AgentOption(
     val hidden: Boolean? = null
 )
 
+// ── Providers / Models (from /config/providers) ──
+
 data class ProvidersResponse(
     val providers: List<ProviderInfo>,
     val default: Map<String, String>? = null
@@ -105,18 +107,45 @@ data class ProvidersResponse(
 data class ProviderInfo(
     val id: String,
     val name: String,
-    val models: List<ModelInfo>
+    val models: Map<String, ProviderModel>
 )
 
-data class ModelInfo(
-    val id: String,
-    val name: String,
+data class ProviderModel(
+    val id: String? = null,
+    val name: String? = null,
+    val status: String? = null,
+    val capabilities: ModelCapabilities? = null,
+    val limit: ModelLimits? = null,
+    val variants: Map<String, Any>? = null
+)
+
+data class ModelCapabilities(
+    val attachment: Boolean? = null,
+    val toolcall: Boolean? = null,
+    val tools: Boolean? = null
+)
+
+data class ModelLimits(
+    val context: Long? = null,
+    val output: Long? = null
+)
+
+/** Flattened model option used in the UI */
+data class ModelOption(
+    @SerializedName("providerID") val providerID: String,
+    val providerName: String,
+    @SerializedName("modelID") val modelID: String,
+    val modelName: String,
+    val variant: String? = null,
     val status: String? = null,
     val contextLimit: Long? = null,
     val outputLimit: Long? = null,
-    val tools: Boolean? = null,
-    val isDefault: Boolean? = null
+    val tools: Boolean = false,
+    val attachments: Boolean = false,
+    val isDefault: Boolean = false
 )
+
+// ── Path, Project, VCS, Files ──
 
 data class PathInfo(
     val home: String,

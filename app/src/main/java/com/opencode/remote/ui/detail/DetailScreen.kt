@@ -1,11 +1,14 @@
 package com.opencode.remote.ui.detail
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -15,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.opencode.remote.data.api.dto.*
@@ -30,18 +34,40 @@ fun DetailScreen(
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Bottom sheet states
+    var showCommandPalette by remember { mutableStateOf(false) }
     var showModelSheet by remember { mutableStateOf(false) }
     var showAgentSheet by remember { mutableStateOf(false) }
     var showInfoSheet by remember { mutableStateOf(false) }
 
+    // Smart auto-scroll: track if user is at bottom
+    var isAtBottom by remember { mutableStateOf(true) }
+    val isScrolling = remember { mutableStateOf(false) }
+
+    // Load session
     LaunchedEffect(sessionId) {
         viewModel.loadSession(sessionId)
     }
 
-    // Auto-scroll to bottom on new messages
-    LaunchedEffect(uiState.messages.size) {
-        if (uiState.messages.isNotEmpty()) {
+    // Smart auto-scroll: scroll to bottom only if user is at bottom
+    LaunchedEffect(uiState.messages.size, uiState.messages.lastOrNull()?.id, uiState.isSending) {
+        if (isAtBottom && uiState.messages.isNotEmpty()) {
+            // Small delay to let layout settle
+            kotlinx.coroutines.delay(100)
             listState.animateScrollToItem(uiState.messages.size - 1)
+        }
+    }
+
+    // Detect scroll position
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (!listState.isScrollInProgress) {
+            isScrolling.value = false
+            // Check if we're at bottom
+            val layoutInfo = listState.layoutInfo
+            val lastVisibleItem = layoutInfo.visibleItemsInfo.lastOrNull()
+            isAtBottom = lastVisibleItem != null &&
+                lastVisibleItem.index >= layoutInfo.totalItemsCount - 2
         }
     }
 
@@ -62,14 +88,16 @@ fun DetailScreen(
                             text = uiState.session?.title ?: "Session",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
-                            maxLines = 1
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         if (uiState.session?.directory != null) {
                             Text(
                                 text = uiState.session!!.directory,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -80,15 +108,25 @@ fun DetailScreen(
                     }
                 },
                 actions = {
-                    if (uiState.isBusy) {
-                        IconButton(onClick = { viewModel.abortSession() }) {
-                            Icon(
-                                Icons.Default.Stop,
-                                contentDescription = "Abort",
-                                tint = MaterialTheme.colorScheme.error
-                            )
-                        }
+                    // Thinking toggle
+                    IconButton(onClick = { viewModel.toggleThinking() }) {
+                        Icon(
+                            if (uiState.showThinking) Icons.Default.Psychology else Icons.Default.Psychology,
+                            contentDescription = "Toggle Thinking",
+                            tint = if (uiState.showThinking)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
+                    // Commands palette
+                    IconButton(onClick = { showCommandPalette = true }) {
+                        Icon(
+                            Icons.Default.Code,
+                            contentDescription = "Commands"
+                        )
+                    }
+                    // Info
                     IconButton(onClick = { showInfoSheet = true }) {
                         Icon(Icons.Default.Info, contentDescription = "Info")
                     }
@@ -103,8 +141,10 @@ fun DetailScreen(
             ComposerBar(
                 onSend = { text -> viewModel.sendMessage(text) },
                 onStop = { viewModel.abortSession() },
+                onCommandPalette = { showCommandPalette = true },
                 isBusy = uiState.isBusy,
-                enabled = sessionId.isNotBlank()
+                enabled = sessionId.isNotBlank(),
+                commands = uiState.commands
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -126,33 +166,20 @@ fun DetailScreen(
                     state = listState,
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                    contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp)
+                        .padding(horizontal = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp)
                 ) {
-                    // Context strip
-                    if (uiState.selectedModel != null || uiState.selectedAgent != null) {
-                        item {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                uiState.selectedModel?.let { model ->
-                                    ContextChip(
-                                        label = "${model.providerID}/${model.modelID}",
-                                        onDismiss = { viewModel.selectModel(null) }
-                                    )
-                                }
-                                uiState.selectedAgent?.let { agent ->
-                                    ContextChip(
-                                        label = "Agent: $agent",
-                                        onDismiss = { viewModel.selectAgent(null) }
-                                    )
-                                }
-                            }
-                        }
+                    // Context strip (model/agent chips)
+                    item {
+                        ContextStrip(
+                            modelOption = uiState.selectedModelOption,
+                            agentOption = uiState.selectedAgentOption,
+                            sessionStatus = uiState.sessionStatus,
+                            onModelClick = { showModelSheet = true },
+                            onAgentClick = { showAgentSheet = true },
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
                     }
 
                     // Todo box
@@ -160,167 +187,642 @@ fun DetailScreen(
                         item {
                             TodoBox(
                                 todos = uiState.todos,
-                                modifier = Modifier.padding(bottom = 8.dp)
+                                modifier = Modifier.padding(bottom = 4.dp)
                             )
                         }
                     }
 
                     // Messages
-                    items(uiState.messages, key = { it.info.id }) { envelope ->
-                        val text = envelope.parts
-                            .filter { it.type == "text" }
-                            .joinToString("\n") { it.text ?: "" }
-                        if (text.isNotBlank()) {
-                            MessageBubble(
-                                role = envelope.info.role,
-                                text = text,
-                                timestamp = envelope.info.time.created
+                    items(uiState.messages, key = { it.id }) { message ->
+                        MessageBubble(
+                            message = message,
+                            showThinking = uiState.showThinking,
+                            onToggleThinking = { viewModel.toggleThinking() }
+                        )
+                    }
+
+                    // Typing / busy indicator
+                    if (uiState.isSending || uiState.isBusy) {
+                        item {
+                            BusyIndicator(
+                                isSending = uiState.isSending,
+                                sessionStatus = uiState.sessionStatus
                             )
                         }
                     }
 
-                    // Typing indicator
-                    if (uiState.isSending) {
-                        item {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp),
-                                contentAlignment = Alignment.CenterStart
-                            ) {
-                                Text(
-                                    text = "Typing...",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
+                    // Bottom spacer for scroll anchor
+                    item { Spacer(modifier = Modifier.height(8.dp)) }
+                }
+            }
+
+            // Quick scroll-to-bottom FAB
+            AnimatedVisibility(
+                visible = !isAtBottom && uiState.messages.isNotEmpty(),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 16.dp, bottom = 8.dp)
+            ) {
+                FloatingActionButton(
+                    onClick = {
+                        listState.animateScrollToItem(uiState.messages.size - 1)
+                        isAtBottom = true
+                    },
+                    modifier = Modifier.size(36.dp),
+                    shape = CircleShape,
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    elevation = FloatingActionButtonDefaults.elevation(4.dp)
+                ) {
+                    Icon(
+                        Icons.Default.KeyboardArrowDown,
+                        contentDescription = "Scroll to bottom",
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
         }
     }
 
-    // Info Bottom Sheet
+    // ── Command Palette Bottom Sheet ──
+    if (showCommandPalette) {
+        CommandPalette(
+            commands = uiState.commands,
+            onDismiss = { showCommandPalette = false },
+            onExecute = { command, _ ->
+                viewModel.updateComposerText("/$command ")
+            },
+            selectedModelLabel = uiState.selectedModelOption?.let {
+                "${it.providerName}/${it.modelName}"
+            },
+            selectedAgentLabel = uiState.selectedAgentOption?.name
+        )
+    }
+
+    // ── Info Bottom Sheet ──
     if (showInfoSheet) {
         ModalBottomSheet(
             onDismissRequest = { showInfoSheet = false },
             shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
         ) {
-            BottomSheetHandle(modifier = Modifier.align(Alignment.CenterHorizontally))
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = "Session Info",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
+            SessionInfoSheet(
+                session = uiState.session,
+                project = uiState.project,
+                vcs = uiState.vcs,
+                diffs = uiState.diffs,
+                sessionStatus = uiState.sessionStatus,
+                modelOption = uiState.selectedModelOption,
+                agentOption = uiState.selectedAgentOption
+            )
+        }
+    }
 
-                HorizontalDivider()
+    // ── Model Selection Bottom Sheet ──
+    if (showModelSheet) {
+        ModelSelectionSheet(
+            modelOptions = uiState.modelOptions,
+            selectedOption = uiState.selectedModelOption,
+            onSelect = { option ->
+                viewModel.selectModel(option)
+                showModelSheet = false
+            },
+            onDismiss = { showModelSheet = false }
+        )
+    }
 
-                // Project info
-                uiState.project?.let { project ->
-                    InfoRow("Project", project.name ?: project.directory ?: "N/A")
-                }
+    // ── Agent Selection Bottom Sheet ──
+    if (showAgentSheet) {
+        AgentSelectionSheet(
+            agents = uiState.agents,
+            selectedAgentId = uiState.selectedAgent,
+            onSelect = { agentId ->
+                viewModel.selectAgent(agentId)
+                showAgentSheet = false
+            },
+            onDismiss = { showAgentSheet = false }
+        )
+    }
+}
 
-                // VCS info
-                uiState.vcs?.let { vcs ->
-                    InfoRow("Branch", vcs.branch ?: "N/A")
-                    if (vcs.status != null) InfoRow("Status", vcs.status)
-                    InfoRow("Ahead/Behind", "${vcs.ahead ?: 0}/${vcs.behind ?: 0}")
-                }
+// ── Context Strip ──
 
-                // Model info
-                uiState.session?.model?.let { model ->
-                    InfoRow("Model", "${model.providerID}/${model.id}")
-                    model.variant?.let { InfoRow("Variant", it) }
-                }
+@Composable
+private fun ContextStrip(
+    modelOption: ModelOption?,
+    agentOption: AgentOption?,
+    sessionStatus: SessionStatus?,
+    onModelClick: () -> Unit,
+    onAgentClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (modelOption == null && agentOption == null && sessionStatus == null) return
 
-                // Diffs
-                if (uiState.diffs.isNotEmpty()) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        // Model chip
+        if (modelOption != null) {
+            InputChip(
+                selected = false,
+                onClick = onModelClick,
+                label = {
                     Text(
-                        text = "File Changes",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
+                        text = modelOption.modelName,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1
                     )
-                    uiState.diffs.forEach { diff ->
+                },
+                leadingIcon = {
+                    Icon(
+                        Icons.Default.SmartToy,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp)
+                    )
+                },
+                trailingIcon = {
+                    Icon(
+                        Icons.Default.ArrowDropDown,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp)
+                    )
+                },
+                shape = RoundedCornerShape(8.dp)
+            )
+        }
+
+        // Agent chip
+        if (agentOption != null) {
+            InputChip(
+                selected = false,
+                onClick = onAgentClick,
+                label = {
+                    Text(
+                        text = agentOption.name,
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        Icons.Default.Person,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp)
+                    )
+                },
+                trailingIcon = {
+                    Icon(
+                        Icons.Default.ArrowDropDown,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp)
+                    )
+                },
+                shape = RoundedCornerShape(8.dp)
+            )
+        }
+
+        // Status badge
+        if (sessionStatus != null && sessionStatus.type != "idle") {
+            val (color, label) = when (sessionStatus.type) {
+                "busy" -> MaterialTheme.colorScheme.primary to "Busy"
+                "retry" -> MaterialTheme.colorScheme.error to "Retry"
+                else -> MaterialTheme.colorScheme.tertiary to sessionStatus.type
+            }
+            SuggestionChip(
+                onClick = {},
+                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                icon = {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(12.dp),
+                        strokeWidth = 1.5.dp,
+                        color = color
+                    )
+                },
+                shape = RoundedCornerShape(8.dp)
+            )
+        }
+
+        // Context limit info if available
+        modelOption?.contextLimit?.let { limit ->
+            SuggestionChip(
+                onClick = {},
+                label = {
+                    Text(
+                        text = formatTokenLimit(limit),
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                },
+                icon = {
+                    Icon(
+                        Icons.Default.DataArray,
+                        contentDescription = null,
+                        modifier = Modifier.size(12.dp)
+                    )
+                },
+                shape = RoundedCornerShape(8.dp)
+            )
+        }
+    }
+}
+
+// ── Busy Indicator ──
+
+@Composable
+private fun BusyIndicator(
+    isSending: Boolean,
+    sessionStatus: SessionStatus?,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(16.dp),
+            strokeWidth = 2.dp,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Text(
+            text = if (isSending) "Sending..." else
+                sessionStatus?.message ?: "Processing...",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (sessionStatus?.attempt != null && sessionStatus.attempt > 1) {
+            Text(
+                text = "attempt ${sessionStatus.attempt}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+            )
+        }
+    }
+}
+
+// ── Session Info Sheet ──
+
+@Composable
+private fun SessionInfoSheet(
+    session: Session?,
+    project: ProjectCurrent?,
+    vcs: VcsStatus?,
+    diffs: List<DiffFile>,
+    sessionStatus: SessionStatus?,
+    modelOption: ModelOption?,
+    agentOption: AgentOption?
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp, horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        BottomSheetHandle(modifier = Modifier.align(Alignment.CenterHorizontally))
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text(
+            text = "Session Info",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
+
+        HorizontalDivider()
+
+        // Model info
+        if (modelOption != null) {
+            InfoCard(
+                title = "Model",
+                content = buildString {
+                    append("${modelOption.providerName} / ${modelOption.modelName}")
+                    if (modelOption.variant != null) append(" (${modelOption.variant})")
+                },
+                subtitle = buildString {
+                    if (modelOption.contextLimit != null) {
+                        append("Context: ${formatTokenLimit(modelOption.contextLimit)}")
+                    }
+                    if (modelOption.outputLimit != null) {
+                        append(" | Output: ${formatTokenLimit(modelOption.outputLimit)}")
+                    }
+                    append(" | Tools: ${if (modelOption.tools) "✓" else "✗"}")
+                },
+                icon = Icons.Default.SmartToy
+            )
+        } else session?.model?.let { m ->
+            InfoCard(
+                title = "Model",
+                content = "${m.providerID}/${m.id}",
+                subtitle = m.variant?.let { "Variant: $it" },
+                icon = Icons.Default.SmartToy
+            )
+        }
+
+        // Agent info
+        if (agentOption != null) {
+            InfoCard(
+                title = "Agent",
+                content = agentOption.name,
+                subtitle = agentOption.description,
+                icon = Icons.Default.Person
+            )
+        }
+
+        // Project info
+        project?.let { p ->
+            InfoCard(
+                title = "Project",
+                content = p.name ?: p.directory ?: "N/A",
+                icon = Icons.Default.Folder
+            )
+        }
+
+        // VCS info
+        vcs?.let { v ->
+            InfoCard(
+                title = "Git",
+                content = v.branch ?: "N/A",
+                subtitle = buildString {
+                    append("Ahead: ${v.ahead ?: 0} | Behind: ${v.behind ?: 0}")
+                    if (v.status != null) append(" | ${v.status}")
+                },
+                icon = Icons.Default.Commit
+            )
+        }
+
+        // Session status
+        sessionStatus?.let { s ->
+            InfoCard(
+                title = "Status",
+                content = s.type,
+                subtitle = s.message,
+                icon = if (s.type == "busy") Icons.Default.PlayArrow else Icons.Default.CheckCircle
+            )
+        }
+
+        // Diffs
+        if (diffs.isNotEmpty()) {
+            Text(
+                text = "File Changes (${diffs.size})",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            diffs.take(10).forEach { diff ->
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
                         Text(
-                            text = "${diff.file} (+${diff.additions}/-${diff.deletions})",
+                            text = diff.file,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            text = "+${diff.additions}/-${diff.deletions}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Medium
                         )
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(32.dp))
+        }
+
+        // Session ID
+        session?.let { s ->
+            Text(
+                text = "ID: ${s.id}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
+    }
+}
+
+@Composable
+private fun InfoCard(
+    title: String,
+    content: String,
+    subtitle: String? = null,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = content,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ── Model Selection Sheet ──
+
+@Composable
+private fun ModelSelectionSheet(
+    modelOptions: List<ModelOption>,
+    selectedOption: ModelOption?,
+    onSelect: (ModelOption) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+
+    val filteredOptions = remember(searchQuery, modelOptions) {
+        if (searchQuery.isBlank()) modelOptions
+        else modelOptions.filter { opt ->
+            opt.modelName.contains(searchQuery, ignoreCase = true) ||
+            opt.providerName.contains(searchQuery, ignoreCase = true) ||
+            opt.providerID.contains(searchQuery, ignoreCase = true)
         }
     }
 
-    // Model Selection Bottom Sheet
-    if (showModelSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showModelSheet = false },
-            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+    val grouped = remember(filteredOptions) {
+        filteredOptions.groupBy { it.providerName }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
         ) {
             BottomSheetHandle(modifier = Modifier.align(Alignment.CenterHorizontally))
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = "Select Model",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                HorizontalDivider()
 
-                uiState.providers.forEach { provider ->
-                    Text(
-                        text = provider.name,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    provider.models.forEach { model ->
-                        val isSelected = uiState.selectedModel?.modelID == model.id
+            Text(
+                text = "Select Model",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+
+            // Search
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Search models...") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                )
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 400.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                contentPadding = PaddingValues(bottom = 32.dp)
+            ) {
+                grouped.forEach { (providerName, options) ->
+                    item {
+                        Text(
+                            text = providerName,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    }
+                    items(options, key = { "${it.providerID}/${it.modelID}/${it.variant}" }) { option ->
+                        val isSelected = selectedOption?.let {
+                            it.providerID == option.providerID &&
+                            it.modelID == option.modelID &&
+                            it.variant == option.variant
+                        } == true
+
                         Card(
-                            onClick = {
-                                viewModel.selectModel(
-                                    ModelSelection(provider.id, model.id)
-                                )
-                                showModelSheet = false
-                            },
+                            onClick = { onSelect(option) },
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(10.dp),
                             colors = CardDefaults.cardColors(
                                 containerColor = if (isSelected)
                                     MaterialTheme.colorScheme.primaryContainer
                                 else
                                     MaterialTheme.colorScheme.surface
+                            ),
+                            elevation = CardDefaults.cardElevation(
+                                defaultElevation = if (isSelected) 0.dp else 0.dp
                             )
                         ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Text(
-                                    text = model.name,
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = option.modelName,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        if (option.isDefault) {
+                                            SuggestionChip(
+                                                onClick = {},
+                                                label = {
+                                                    Text(
+                                                        "default",
+                                                        style = MaterialTheme.typography.labelSmall
+                                                    )
+                                                },
+                                                shape = RoundedCornerShape(4.dp)
+                                            )
+                                        }
+                                        if (option.variant != null) {
+                                            Text(
+                                                text = "(${option.variant})",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                    // Model capabilities
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    ) {
+                                        if (option.contextLimit != null) {
+                                            Text(
+                                                text = formatTokenLimit(option.contextLimit),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                            )
+                                        }
+                                        if (option.tools) {
+                                            Text(
+                                                text = "Tools",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.tertiary
+                                            )
+                                        }
+                                        if (option.attachments) {
+                                            Text(
+                                                text = "Attachments",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.tertiary
+                                            )
+                                        }
+                                    }
+                                }
                                 if (isSelected) {
                                     Icon(
-                                        Icons.Default.Check,
+                                        Icons.Default.CheckCircle,
                                         contentDescription = "Selected",
-                                        tint = MaterialTheme.colorScheme.primary
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
                             }
@@ -328,75 +830,92 @@ fun DetailScreen(
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(32.dp))
         }
     }
+}
 
-    // Agent Selection Bottom Sheet
-    if (showAgentSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showAgentSheet = false },
-            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+// ── Agent Selection Sheet ──
+
+@Composable
+private fun AgentSelectionSheet(
+    agents: List<AgentOption>,
+    selectedAgentId: String?,
+    onSelect: (String?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
         ) {
             BottomSheetHandle(modifier = Modifier.align(Alignment.CenterHorizontally))
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = "Select Agent",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                HorizontalDivider()
 
-                // Default option (no agent)
-                Card(
-                    onClick = {
-                        viewModel.selectAgent(null)
-                        showAgentSheet = false
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (uiState.selectedAgent == null)
-                            MaterialTheme.colorScheme.primaryContainer
-                        else
-                            MaterialTheme.colorScheme.surface
-                    )
+            Text(
+                text = "Select Agent",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+
+            // Default option (no agent)
+            Card(
+                onClick = { onSelect(null) },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (selectedAgentId == null)
+                        MaterialTheme.colorScheme.primaryContainer
+                    else
+                        MaterialTheme.colorScheme.surface
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Column {
                         Text(
                             text = "Default (No Agent)",
-                            style = MaterialTheme.typography.bodyMedium
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
                         )
-                        if (uiState.selectedAgent == null) {
-                            Icon(
-                                Icons.Default.Check,
-                                contentDescription = "Selected",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
+                        Text(
+                            text = "Let the model decide",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (selectedAgentId == null) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = "Selected",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
+            }
 
-                uiState.agents.filter { it.hidden != true }.forEach { agent ->
-                    val isSelected = uiState.selectedAgent == agent.id
+            Spacer(modifier = Modifier.height(4.dp))
+
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 400.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                contentPadding = PaddingValues(bottom = 32.dp)
+            ) {
+                items(agents, key = { it.id }) { agent ->
+                    val isSelected = selectedAgentId == agent.id
                     Card(
-                        onClick = {
-                            viewModel.selectAgent(agent.id)
-                            showAgentSheet = false
-                        },
+                        onClick = { onSelect(agent.id) },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(10.dp),
                         colors = CardDefaults.cardColors(
                             containerColor = if (isSelected)
                                 MaterialTheme.colorScheme.primaryContainer
@@ -404,65 +923,55 @@ fun DetailScreen(
                                 MaterialTheme.colorScheme.surface
                         )
                     ) {
-                        Column(
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(12.dp)
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = agent.name,
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Medium
                                 )
-                                if (isSelected) {
-                                    Icon(
-                                        Icons.Default.Check,
-                                        contentDescription = "Selected",
-                                        tint = MaterialTheme.colorScheme.primary
+                                if (agent.description != null) {
+                                    Text(
+                                        text = agent.description,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2
                                     )
                                 }
-                            }
-                            if (agent.description != null) {
                                 Text(
-                                    text = agent.description,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    text = "Mode: ${agent.mode}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                )
+                            }
+                            if (isSelected) {
+                                Icon(
+                                    Icons.Default.CheckCircle,
+                                    contentDescription = "Selected",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
 
-@Composable
-private fun InfoRow(
-    label: String,
-    value: String
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = FontWeight.Medium
-        )
+// ── Helpers ──
+
+private fun formatTokenLimit(limit: Long): String {
+    return when {
+        limit >= 1_000_000 -> "${limit / 1_000_000}M"
+        limit >= 1_000 -> "${limit / 1_000}K"
+        else -> limit.toString()
     }
 }
-
-

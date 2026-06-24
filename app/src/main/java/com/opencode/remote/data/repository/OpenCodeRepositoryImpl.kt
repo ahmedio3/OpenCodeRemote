@@ -2,7 +2,6 @@ package com.opencode.remote.data.repository
 
 import com.opencode.remote.data.api.OpenCodeApi
 import com.opencode.remote.data.api.dto.*
-import com.opencode.remote.data.local.SettingsDataStore
 import com.opencode.remote.domain.ServerConfig
 import com.opencode.remote.ui.sessions.SessionView
 import kotlinx.coroutines.flow.Flow
@@ -12,8 +11,7 @@ import javax.inject.Singleton
 
 @Singleton
 class OpenCodeRepositoryImpl @Inject constructor(
-    private val api: OpenCodeApi,
-    private val settingsDataStore: SettingsDataStore
+    private val api: OpenCodeApi
 ) : OpenCodeRepository {
 
     override fun testConnection(): Flow<Result<HealthResponse>> = flow {
@@ -141,7 +139,7 @@ class OpenCodeRepositoryImpl @Inject constructor(
         args: String?,
         model: ModelSelection?,
         agent: String?
-    ): Flow<Result<CommandResponse>> = flow {
+    ): Flow<Result<MessageEnvelope>> = flow {
         try {
             val result = api.sendCommand(
                 id,
@@ -189,6 +187,39 @@ class OpenCodeRepositoryImpl @Inject constructor(
         try {
             val result = api.getCommands()
             emit(Result.success(result))
+        } catch (e: Exception) {
+            emit(Result.failure(e))
+        }
+    }
+
+    override fun getModelOptions(): Flow<Result<List<ModelOption>>> = flow {
+        try {
+            val response = api.getProviders()
+            val defaultModels = response.default ?: emptyMap()
+            val options = response.providers.flatMap { provider ->
+                provider.models.flatMap { (modelKey, providerModel) ->
+                    val modelId = providerModel.id ?: modelKey
+                    val modelName = providerModel.name ?: modelId
+                    val isDefault = defaultModels[provider.id] == modelKey
+                    val base = ModelOption(
+                        providerID = provider.id,
+                        providerName = provider.name,
+                        modelID = modelId,
+                        modelName = modelName,
+                        status = providerModel.status,
+                        contextLimit = providerModel.limit?.context,
+                        outputLimit = providerModel.limit?.output,
+                        tools = providerModel.capabilities?.toolcall == true || providerModel.capabilities?.tools == true,
+                        attachments = providerModel.capabilities?.attachment == true,
+                        isDefault = isDefault
+                    )
+                    val variantIDs = providerModel.variants?.keys ?: emptySet()
+                    listOf(base) + variantIDs.map { variant ->
+                        base.copy(variant = variant, isDefault = false)
+                    }
+                }
+            }
+            emit(Result.success(options))
         } catch (e: Exception) {
             emit(Result.failure(e))
         }
@@ -263,6 +294,7 @@ class OpenCodeRepositoryImpl @Inject constructor(
     }
 
     override fun getServerConfig(): Flow<ServerConfig> {
-        return settingsDataStore.getConfig()
+        // This is handled by SettingsDataStore directly
+        throw UnsupportedOperationException("Use SettingsDataStore directly")
     }
 }
